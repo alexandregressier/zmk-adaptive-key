@@ -63,6 +63,7 @@ struct behavior_adaptive_key_data {
     struct zmk_key_param last_keycode;
     int64_t last_timestamp;
     const struct binding_list *pressed_bindings;
+    bool last_keycode_had_implicit_shift;
 };
 
 // Dead keys are global.
@@ -133,10 +134,26 @@ static bool trigger_is_true(const struct trigger_cfg *trigger,
         return false;
     }
 
+    // If last keycode had implicit shift (like LEFT_BRACE = LS(LEFT_BRACKET)),
+    // don't match triggers that don't explicitly require shift
+    if (data->last_keycode_had_implicit_shift) {
+        for (int i = 0; i < trigger->trigger_keys_len; i++) {
+            // Only match if the trigger key ALSO has shift
+            if (trigger->trigger_keys[i].modifiers & (MOD_LSFT | MOD_RSFT)) {
+                if (keys_are_equal(&trigger->trigger_keys[i], &data->last_keycode,
+                                   trigger->strict_modifiers, trigger->allow_more_modifiers)) {
+                    data->pressed_bindings = &trigger->bindings;
+                    return true;
+                }
+            }
+        }
+        return false;  // No match for implicitly shifted keys against unshifted triggers
+    }
+
+    // Normal matching for non-implicitly-shifted keys
     for (int i = 0; i < trigger->trigger_keys_len; i++) {
         if (keys_are_equal(&trigger->trigger_keys[i], &data->last_keycode,
                            trigger->strict_modifiers, trigger->allow_more_modifiers)) {
-
             data->pressed_bindings = &trigger->bindings;
 
             return true;
@@ -238,6 +255,8 @@ static int adaptive_key_keycode_state_changed_listener(const zmk_event_t *eh) {
         struct behavior_adaptive_key_data *data = dev->data;
         data->last_keycode = key;
         data->last_timestamp = ev->timestamp;
+        // Track if this key had shift as part of its definition
+        data->last_keycode_had_implicit_shift = (ev->implicit_modifiers & (MOD_LSFT | MOD_RSFT)) != 0;
 
         const struct behavior_adaptive_key_config *config = dev->config;
         if (key_list_contains(config->dead_keys, &key)) {

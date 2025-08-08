@@ -47,6 +47,7 @@ struct trigger_cfg {
     int max_idle_ms;
     bool delete_prior;
     bool strict_modifiers;
+    bool allow_more_modifiers;
 };
 
 struct behavior_adaptive_key_config {
@@ -99,15 +100,22 @@ static inline int release_adaptive_key_behavior(const struct behavior_adaptive_k
 }
 
 static bool keys_are_equal(const struct zmk_key_param *key, const struct zmk_key_param *other,
-                           bool strict) {
+                           bool strict_modifiers, bool allow_more_modifiers) {
 
-    if (strict && key->modifiers != other->modifiers) {
+    if (strict_modifiers && key->modifiers != other->modifiers) {
         return false;
     }
 
-    // *key mods can be subset of *other mods if strict is disabled.
-    if (!strict && (key->modifiers & other->modifiers) != key->modifiers) {
-        return false;
+    if (allow_more_modifiers) {
+        // *other must have at least all modifiers from *key, but can have additional ones
+        if ((key->modifiers & other->modifiers) != key->modifiers) {
+            return false;
+        }
+    } else if (!strict_modifiers) {
+        // *key mods can be subset of *other mods
+        if ((key->modifiers & other->modifiers) != key->modifiers) {
+            return false;
+        }
     }
 
     return key->page == other->page && key->id == other->id;
@@ -127,7 +135,7 @@ static bool trigger_is_true(const struct trigger_cfg *trigger,
 
     for (int i = 0; i < trigger->trigger_keys_len; i++) {
         if (keys_are_equal(&trigger->trigger_keys[i], &data->last_keycode,
-                           trigger->strict_modifiers)) {
+                           trigger->strict_modifiers, trigger->allow_more_modifiers)) {
 
             data->pressed_bindings = &trigger->bindings;
 
@@ -194,7 +202,7 @@ ZMK_SUBSCRIPTION(behavior_adaptive_key, zmk_keycode_state_changed);
 
 static bool key_list_contains(const struct key_list *list, const struct zmk_key_param *key) {
     for (int i = 0; i < list->size; i++) {
-        if (keys_are_equal(&list->keys[i], key, true)) {
+        if (keys_are_equal(&list->keys[i], key, true, false)) {
             return true;
         }
     }
@@ -273,6 +281,7 @@ static int behavior_adaptive_key_init(const struct device *dev) {
         .min_idle_ms = DT_PROP(n, min_prior_idle_ms),                                              \
         .max_idle_ms = DT_PROP(n, max_prior_idle_ms),                                              \
         .strict_modifiers = DT_PROP(n, strict_modifiers),                                          \
+        .allow_more_modifiers = DT_PROP(n, allow_more_modifiers),                                  \
     }
 
 #define KEY_LIST_ITEM(i, n, prop) ZMK_KEY_PARAM_DECODE(DT_INST_PROP_BY_IDX(n, prop, i))

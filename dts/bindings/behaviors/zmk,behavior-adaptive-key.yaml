@@ -43,3 +43,9 @@ child-binding:
       type: boolean
     strict-modifiers:
       type: boolean
+    allow-more-modifiers:
+      type: boolean
+      description: |
+        If true, the last pressed key must have at least the modifiers 
+        specified in trigger-keys, but can have additional modifiers.
+        Cannot be used with strict-modifiers because it will take precedence.
